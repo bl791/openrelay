@@ -138,6 +138,12 @@ services:
       S3_BUCKET: ${S3_BUCKET:-openrelay-media}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-openrelay}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-openrelay-secret}
+      # Twitch clip import (optional; blank disables the feature).
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
+      TWITCH_REDIRECT_URI: ${TWITCH_REDIRECT_URI:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:

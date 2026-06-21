@@ -37,6 +37,8 @@ export const streamStatus = pgEnum('stream_status', [
 ]);
 export const sceneKind = pgEnum('scene_kind', ['ingest', 'brb', 'clips', 'image', 'color']);
 export const friendRole = pgEnum('friend_role', ['viewer', 'operator', 'manager']);
+/** Where a clip's media originated. */
+export const clipSource = pgEnum('clip_source', ['upload', 'twitch']);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
@@ -136,7 +138,32 @@ export const clips = pgTable('clips', {
   contentType: text('content_type').notNull(),
   sizeBytes: integer('size_bytes').notNull().default(0),
   durationSeconds: integer('duration_seconds'),
+  /** Origin of the media (uploaded vs imported from Twitch). */
+  source: clipSource('source').notNull().default('upload'),
+  /** For imported clips, the upstream reference (e.g. Twitch clip id / URL). */
+  sourceRef: text('source_ref'),
   createdAt: timestamps.createdAt,
+});
+
+/**
+ * Per-user Twitch OAuth connection. Access/refresh tokens are stored encrypted
+ * (see the API's crypto helper); only one connection per user.
+ */
+export const twitchConnections = pgTable('twitch_connections', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** Twitch user id of the connected account. */
+  twitchUserId: text('twitch_user_id').notNull(),
+  twitchLogin: text('twitch_login').notNull(),
+  /** Encrypted OAuth tokens (never returned to clients). */
+  accessTokenEnc: text('access_token_enc').notNull(),
+  refreshTokenEnc: text('refresh_token_enc').notNull(),
+  scope: text('scope').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+  ...timestamps,
 });
 
 export const friendConnections = pgTable(
@@ -155,10 +182,18 @@ export const friendConnections = pgTable(
   (table) => [uniqueIndex('friend_connections_stream_user_idx').on(table.streamId, table.userId)],
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   streams: many(streams),
   friendConnections: many(friendConnections),
   ownedIngests: many(ingests),
+  twitchConnection: one(twitchConnections, {
+    fields: [users.id],
+    references: [twitchConnections.userId],
+  }),
+}));
+
+export const twitchConnectionsRelations = relations(twitchConnections, ({ one }) => ({
+  user: one(users, { fields: [twitchConnections.userId], references: [users.id] }),
 }));
 
 export const streamsRelations = relations(streams, ({ one, many }) => ({
@@ -206,3 +241,5 @@ export type FriendConnectionRow = typeof friendConnections.$inferSelect;
 export type NewFriendConnectionRow = typeof friendConnections.$inferInsert;
 export type ClipRow = typeof clips.$inferSelect;
 export type NewClipRow = typeof clips.$inferInsert;
+export type TwitchConnectionRow = typeof twitchConnections.$inferSelect;
+export type NewTwitchConnectionRow = typeof twitchConnections.$inferInsert;

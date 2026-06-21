@@ -51,6 +51,14 @@ export function newFriendConnectionId(): FriendConnectionId {
 }
 
 /**
+ * Id for a Twitch connection row. The id is not a branded core type (it never
+ * leaves the server in any response), so a plain cuid2 suffices.
+ */
+export function newTwitchConnectionId(): string {
+  return createId();
+}
+
+/**
  * Generate a high-entropy, URL-safe stream key for an ingest endpoint. Two cuid2
  * ids concatenated give ~48 chars of entropy, comfortably inside the
  * 8..128 bound enforced by the {@link Ingest} schema.

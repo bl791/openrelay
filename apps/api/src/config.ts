@@ -7,6 +7,17 @@ import { z } from 'zod';
  * ever consumes the parsed, typed {@link Config} and never reads `process.env`
  * directly.
  */
+/**
+ * Treat empty/whitespace-only env values as absent. Compose always sets keys
+ * (e.g. `TWITCH_CLIENT_ID=`), so an unset optional arrives as `''`, which would
+ * otherwise fail `.min(1)` and crash startup. This coerces those to `undefined`.
+ */
+const optionalNonEmpty = (schema: z.ZodString): z.ZodOptional<z.ZodString> =>
+  z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    schema.optional(),
+  ) as unknown as z.ZodOptional<z.ZodString>;
+
 const EnvSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   API_HOST: z.string().min(1).default('0.0.0.0'),
@@ -46,6 +57,30 @@ const EnvSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1).default('minioadmin'),
   /** Secret key for the media bucket. */
   S3_SECRET_KEY: z.string().min(1).default('minioadmin'),
+  /**
+   * Twitch application client id. When this and {@link TWITCH_CLIENT_SECRET} are
+   * absent the Twitch import feature is disabled (`config.twitch.isConfigured`
+   * is false) and the routes return a clear 400.
+   */
+  TWITCH_CLIENT_ID: optionalNonEmpty(z.string().min(1)),
+  /** Twitch application client secret (paired with {@link TWITCH_CLIENT_ID}). */
+  TWITCH_CLIENT_SECRET: optionalNonEmpty(z.string().min(1)),
+  /**
+   * OAuth redirect URI registered with the Twitch app. Defaults to this API's
+   * public callback under the `/api` prefix.
+   */
+  TWITCH_REDIRECT_URI: optionalNonEmpty(z.string().url()),
+  /**
+   * Key used to encrypt stored OAuth tokens at rest (AES-256-GCM). Any non-empty
+   * string works; it is hashed to a 32-byte key. Defaults to deriving from
+   * {@link JWT_SECRET} so local/test setups need no extra configuration.
+   */
+  TOKEN_ENCRYPTION_KEY: optionalNonEmpty(z.string().min(1)),
+  /**
+   * Base URL of the web dashboard the Twitch OAuth callback redirects back to
+   * once an account is linked.
+   */
+  WEB_APP_URL: z.string().url().default('http://localhost:3000'),
 });
 
 export type Config = Readonly<{
@@ -71,6 +106,21 @@ export type Config = Readonly<{
     /** Derived public base URL for objects: `${publicUrl}/${bucket}`. */
     mediaBaseUrl: string;
   }>;
+  /** Per-user Twitch OAuth + clip import configuration. */
+  twitch: Readonly<{
+    /** Whether both client id and secret are present (feature enabled). */
+    isConfigured: boolean;
+    /** Twitch app client id, or `null` when the feature is disabled. */
+    clientId: string | null;
+    /** Twitch app client secret, or `null` when the feature is disabled. */
+    clientSecret: string | null;
+    /** OAuth redirect URI registered with the Twitch app. */
+    redirectUri: string;
+    /** Symmetric key material for encrypting stored OAuth tokens at rest. */
+    tokenEncryptionKey: string;
+    /** Web dashboard base URL the OAuth callback redirects back to. */
+    webRedirect: string;
+  }>;
 }>;
 
 /**
@@ -80,6 +130,9 @@ export type Config = Readonly<{
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = EnvSchema.parse(env);
+  const apiPublicUrl = parsed.API_PUBLIC_URL.replace(/\/$/, '');
+  const twitchConfigured =
+    parsed.TWITCH_CLIENT_ID !== undefined && parsed.TWITCH_CLIENT_SECRET !== undefined;
   return {
     port: parsed.API_PORT,
     host: parsed.API_HOST,
@@ -88,7 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     jwtExpiresIn: parsed.JWT_EXPIRES_IN,
     engineUrl: parsed.ENGINE_URL.replace(/\/$/, ''),
     engineToken: parsed.ENGINE_TOKEN,
-    apiPublicUrl: parsed.API_PUBLIC_URL.replace(/\/$/, ''),
+    apiPublicUrl,
     publicIngestHost: parsed.PUBLIC_INGEST_HOST,
     rtmpPort: parsed.RTMP_PORT,
     srtPort: parsed.SRT_PORT,
@@ -101,6 +154,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       accessKey: parsed.S3_ACCESS_KEY,
       secretKey: parsed.S3_SECRET_KEY,
       mediaBaseUrl: `${parsed.S3_PUBLIC_URL.replace(/\/$/, '')}/${parsed.S3_BUCKET}`,
+    },
+    twitch: {
+      isConfigured: twitchConfigured,
+      clientId: parsed.TWITCH_CLIENT_ID ?? null,
+      clientSecret: parsed.TWITCH_CLIENT_SECRET ?? null,
+      redirectUri: parsed.TWITCH_REDIRECT_URI ?? `${apiPublicUrl}/api/twitch/callback`,
+      // Fall back to the JWT secret so local/dev/test never need an extra var;
+      // the crypto helper hashes whatever it is given down to a 32-byte key.
+      tokenEncryptionKey: parsed.TOKEN_ENCRYPTION_KEY ?? parsed.JWT_SECRET,
+      webRedirect: parsed.WEB_APP_URL.replace(/\/$/, ''),
     },
   };
 }

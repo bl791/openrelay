@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { ApiRequestError } from '@/lib/api';
 import { theme } from '@/theme';
+import { TwitchRedirectToast } from './TwitchRedirectToast';
 import { ToastProvider } from './ui/Toast';
 
 function makeQueryClient(): QueryClient {
@@ -34,7 +35,10 @@ export function Providers({ children }: { children: ReactNode }) {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <QueryClientProvider client={client}>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <TwitchRedirectToast />
+            {children}
+          </ToastProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </AppRouterCacheProvider>

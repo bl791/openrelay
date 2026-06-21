@@ -38,4 +38,29 @@ describe('loadConfig', () => {
     expect(config.rtmpPort).toBe(1936);
     expect(config.srtPort).toBe(9001);
   });
+
+  it('treats blank Twitch credentials as disabled (compose passes empty strings)', () => {
+    const config = loadConfig({
+      ...base,
+      TWITCH_CLIENT_ID: '',
+      TWITCH_CLIENT_SECRET: '   ',
+      TWITCH_REDIRECT_URI: '',
+      TOKEN_ENCRYPTION_KEY: '',
+    });
+    expect(config.twitch.isConfigured).toBe(false);
+    expect(config.twitch.clientId).toBeNull();
+    // Token key falls back to the JWT secret when blank.
+    expect(config.twitch.tokenEncryptionKey).toBe(base.JWT_SECRET);
+  });
+
+  it('enables Twitch when both id and secret are provided', () => {
+    const config = loadConfig({
+      ...base,
+      TWITCH_CLIENT_ID: 'cid',
+      TWITCH_CLIENT_SECRET: 'csecret',
+    });
+    expect(config.twitch.isConfigured).toBe(true);
+    expect(config.twitch.clientId).toBe('cid');
+    expect(config.twitch.redirectUri).toContain('/api/twitch/callback');
+  });
 });

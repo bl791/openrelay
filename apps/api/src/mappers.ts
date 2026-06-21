@@ -14,6 +14,7 @@ import {
   type Scene,
   type Stream,
   type StreamWithChildren,
+  type TwitchConnection,
   type User,
 } from '@openrelay/core';
 import type {
@@ -23,6 +24,7 @@ import type {
   IngestRow,
   SceneRow,
   StreamRow,
+  TwitchConnectionRow,
   UserRow,
 } from '@openrelay/db';
 
@@ -101,8 +103,23 @@ export function toClip(row: ClipRow, apiPublicUrl: string): Clip {
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     durationSeconds: row.durationSeconds,
+    source: row.source,
+    sourceRef: row.sourceRef,
     url: clipContentUrl(apiPublicUrl, row.id),
     createdAt: toIso(row.createdAt),
+  };
+}
+
+/**
+ * Map a Twitch connection row to the API entity. OAuth tokens are NEVER included
+ * in the response — only the linked account's public identity and grant time.
+ */
+export function toTwitchConnection(row: TwitchConnectionRow): TwitchConnection {
+  return {
+    twitchUserId: row.twitchUserId,
+    twitchLogin: row.twitchLogin,
+    scope: row.scope,
+    connectedAt: toIso(row.createdAt),
   };
 }
 

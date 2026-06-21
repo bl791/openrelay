@@ -56,6 +56,8 @@ export function registerClipRoutes(app: FastifyInstance): void {
         contentType,
         sizeBytes: buffer.byteLength,
         durationSeconds: null,
+        source: 'upload',
+        sourceRef: null,
       })
       .returning();
     if (!row) {
@@ -126,6 +128,8 @@ export function registerClipRoutes(app: FastifyInstance): void {
           contentType: request.body.contentType,
           sizeBytes: request.body.sizeBytes,
           durationSeconds: request.body.durationSeconds,
+          source: 'upload',
+          sourceRef: null,
         })
         .returning();
       if (!row) {

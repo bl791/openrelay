@@ -31,6 +31,18 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
+# yt-dlp (used to download Twitch clips server-side) needs Python at runtime.
+# Pin the yt-dlp release for reproducible builds; the static binary needs no pip.
+ENV YT_DLP_VERSION=2026.06.09
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 ca-certificates curl \
+  && curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp" \
+       -o /usr/local/bin/yt-dlp \
+  && chmod a+rx /usr/local/bin/yt-dlp \
+  && apt-get purge -y curl \
+  && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json

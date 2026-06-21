@@ -108,6 +108,10 @@ export const Scene = z.object({
 });
 export type Scene = z.infer<typeof Scene>;
 
+/** Where a clip's media originated. */
+export const ClipSource = z.enum(['upload', 'twitch']);
+export type ClipSource = z.infer<typeof ClipSource>;
+
 /** A media asset (BRB image/video or clip reel) in a stream's media library. */
 export const Clip = z.object({
   id: ClipIdSchema,
@@ -116,11 +120,24 @@ export const Clip = z.object({
   contentType: z.string().min(1).max(120),
   sizeBytes: z.number().int().nonnegative(),
   durationSeconds: z.number().int().nonnegative().nullable(),
+  /** Whether the media was uploaded or imported from Twitch. */
+  source: ClipSource,
+  /** Upstream reference for imported clips (e.g. Twitch clip id), else null. */
+  sourceRef: z.string().nullable(),
   /** Resolved URL the engine/player fetches the media from. */
   url: z.string().url(),
   createdAt: isoDate,
 });
 export type Clip = z.infer<typeof Clip>;
+
+/** A user's linked Twitch account (no tokens are ever exposed to clients). */
+export const TwitchConnection = z.object({
+  twitchUserId: z.string(),
+  twitchLogin: z.string(),
+  scope: z.string(),
+  connectedAt: isoDate,
+});
+export type TwitchConnection = z.infer<typeof TwitchConnection>;
 
 export const FriendConnection = z.object({
   id: FriendConnectionIdSchema,

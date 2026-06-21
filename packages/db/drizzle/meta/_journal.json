@@ -15,6 +15,13 @@
       "when": 1781841464379,
       "tag": "0001_romantic_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782013102489,
+      "tag": "0002_parched_morg",
+      "breakpoints": true
     }
   ]
 }

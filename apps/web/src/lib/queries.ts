@@ -8,8 +8,10 @@ import {
   type CreateSharedIngestRequest,
   type CreateStreamRequest,
   type DestinationId,
+  type ImportTwitchClipsRequest,
   type IngestConnectionInfo,
   type IngestId,
+  type ListTwitchClipsRequest,
   type QuickstartRequest,
   type QuickstartResponse,
   type SceneId,
@@ -17,6 +19,8 @@ import {
   type StreamId,
   type StreamRuntime,
   type StreamWithChildren,
+  type TwitchClipSummary,
+  type TwitchConnection,
   type UpdateDestinationRequest,
   type UpdateStreamRequest,
 } from '@openrelay/core';
@@ -36,6 +40,7 @@ export const queryKeys = {
   runtime: (id: StreamId) => ['streams', id, 'runtime'] as const,
   clips: (id: StreamId) => ['streams', id, 'clips'] as const,
   connection: (id: StreamId) => ['streams', id, 'connection'] as const,
+  twitchConnection: ['twitch', 'connection'] as const,
 };
 
 export function useStreams(): UseQueryResult<Stream[]> {
@@ -302,6 +307,47 @@ export function useRemoveFriend(id: StreamId): UseMutationResult<void, Error, st
   return useMutation({
     mutationFn: (userId: string) => api.removeFriend(id, userId),
     onSuccess: () => {
+      invalidateStream(qc, id);
+    },
+  });
+}
+
+/** The linked Twitch account, or `null` when none is connected. */
+export function useTwitchConnection(): UseQueryResult<TwitchConnection | null> {
+  return useQuery({
+    queryKey: queryKeys.twitchConnection,
+    queryFn: () => api.getTwitchConnection(),
+    retry: false,
+  });
+}
+
+export function useDisconnectTwitch(): UseMutationResult<void, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.disconnectTwitch(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.twitchConnection });
+    },
+  });
+}
+
+/** List a channel's Twitch clips for the import picker (input-driven, so a mutation). */
+export function useListTwitchClips(
+  id: StreamId,
+): UseMutationResult<TwitchClipSummary[], Error, ListTwitchClipsRequest> {
+  return useMutation({
+    mutationFn: (input: ListTwitchClipsRequest) => api.listTwitchClips(id, input),
+  });
+}
+
+export function useImportTwitchClips(
+  id: StreamId,
+): UseMutationResult<Clip[], Error, ImportTwitchClipsRequest> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ImportTwitchClipsRequest) => api.importTwitchClips(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.clips(id) });
       invalidateStream(qc, id);
     },
   });

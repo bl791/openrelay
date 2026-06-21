@@ -6,6 +6,7 @@ import type {
   IngestRow,
   SceneRow,
   StreamRow,
+  TwitchConnectionRow,
   UserRow,
 } from '@openrelay/db';
 
@@ -25,6 +26,7 @@ interface Tables {
   scenes: SceneRow[];
   friendConnections: FriendConnectionRow[];
   clips: ClipRow[];
+  twitchConnections: TwitchConnectionRow[];
 }
 
 type TableName = keyof Tables;
@@ -35,7 +37,8 @@ type Row =
   | DestinationRow
   | SceneRow
   | FriendConnectionRow
-  | ClipRow;
+  | ClipRow
+  | TwitchConnectionRow;
 type AnyRecord = Record<string, unknown>;
 
 export type Predicate = (row: AnyRecord) => boolean;
@@ -121,6 +124,7 @@ const TIMESTAMP_COLUMNS: Record<TableName, readonly string[]> = {
   scenes: [],
   friendConnections: ['createdAt'],
   clips: ['createdAt'],
+  twitchConnections: ['createdAt', 'updatedAt'],
 };
 
 export class FakeDatabase {
@@ -132,6 +136,7 @@ export class FakeDatabase {
     scenes: [],
     friendConnections: [],
     clips: [],
+    twitchConnections: [],
   };
 
   public readonly query: Record<
@@ -156,6 +161,7 @@ export class FakeDatabase {
       scenes: makeQuery('scenes'),
       friendConnections: makeQuery('friendConnections'),
       clips: makeQuery('clips'),
+      twitchConnections: makeQuery('twitchConnections'),
     };
   }
 

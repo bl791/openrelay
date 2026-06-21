@@ -11,6 +11,7 @@ import {
 } from 'fastify-type-provider-zod';
 import { ZodError } from 'zod';
 import type { Config } from './config.js';
+import { createTokenCipher } from './crypto.js';
 import { EngineClient } from './engine-client.js';
 import { AppError } from './errors.js';
 import type { Logger } from './logger.js';
@@ -25,7 +26,10 @@ import { registerInternalRoutes } from './routes/internal.js';
 import { registerQuickstartRoutes } from './routes/quickstart.js';
 import { registerSceneRoutes } from './routes/scenes.js';
 import { registerStreamRoutes } from './routes/streams.js';
+import { registerTwitchRoutes } from './routes/twitch.js';
 import { createMediaStorage, type MediaStorage } from './s3.js';
+import { TwitchClient } from './twitch-client.js';
+import { createYtDlpDownloader, type ClipDownloader } from './twitch-download.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -36,6 +40,13 @@ export interface BuildAppOptions {
   engine?: EngineClient;
   /** Inject a media-storage client (test seam); otherwise an S3/MinIO one is built. */
   storage?: MediaStorage;
+  /**
+   * Inject a Twitch OAuth/Helix client (test seam). When omitted, a real client
+   * is built only if the Twitch feature is configured, otherwise it is `null`.
+   */
+  twitchClient?: TwitchClient;
+  /** Inject a Twitch clip downloader (test seam); otherwise a yt-dlp one is built. */
+  clipDownloader?: ClipDownloader;
 }
 
 /**
@@ -63,6 +74,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     options.engine ?? new EngineClient({ baseUrl: config.engineUrl, token: config.engineToken }),
   );
   app.decorate('s3', options.storage ?? createMediaStorage(config));
+  app.decorate('twitch', options.twitchClient ?? buildTwitchClient(config));
+  app.decorate('twitchCipher', createTokenCipher(config.twitch.tokenEncryptionKey));
+  app.decorate('clipDownloader', options.clipDownloader ?? createYtDlpDownloader());
 
   await app.register(dbPlugin, {
     databaseUrl: config.databaseUrl,
@@ -91,12 +105,28 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       registerSceneRoutes(instance);
       registerClipRoutes(instance);
       registerFriendRoutes(instance);
+      registerTwitchRoutes(instance);
       done();
     },
     { prefix: '/api' },
   );
 
   return app;
+}
+
+/**
+ * Build a real {@link TwitchClient} from config, or `null` when the feature is
+ * not configured (no client id/secret). Routes return a clear 400 when `null`.
+ */
+function buildTwitchClient(config: Config): TwitchClient | null {
+  if (config.twitch.clientId === null || config.twitch.clientSecret === null) {
+    return null;
+  }
+  return new TwitchClient({
+    clientId: config.twitch.clientId,
+    clientSecret: config.twitch.clientSecret,
+    redirectUri: config.twitch.redirectUri,
+  });
 }
 
 /**

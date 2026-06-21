@@ -5,6 +5,7 @@ import {
   ingests,
   scenes,
   streams,
+  twitchConnections,
   users,
 } from '@openrelay/db';
 import { Readable } from 'node:stream';
@@ -17,6 +18,8 @@ import { createLogger } from './logger.js';
 import { buildApp } from './server.js';
 import type { MediaStorage } from './s3.js';
 import { createFakeDatabase, registerFakeTables } from './testing.js';
+import type { TwitchClient } from './twitch-client.js';
+import type { ClipDownloader } from './twitch-download.js';
 
 // Replace drizzle's SQL-building operators with plain-predicate stubs the fake
 // in-memory database understands, while preserving the rest of the real module
@@ -34,7 +37,16 @@ vi.mock('drizzle-orm', async (importActual) => {
   };
 });
 
-registerFakeTables({ users, streams, ingests, destinations, scenes, friendConnections, clips });
+registerFakeTables({
+  users,
+  streams,
+  ingests,
+  destinations,
+  scenes,
+  friendConnections,
+  clips,
+  twitchConnections,
+});
 
 const config: Config = {
   port: 0,
@@ -57,6 +69,14 @@ const config: Config = {
     accessKey: 'minioadmin',
     secretKey: 'minioadmin',
     mediaBaseUrl: 'http://localhost:9000/openrelay-media',
+  },
+  twitch: {
+    isConfigured: true,
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    redirectUri: 'http://api.example.com/api/twitch/callback',
+    tokenEncryptionKey: 'test-secret-test-secret-test-secret-123',
+    webRedirect: 'http://localhost:3000',
   },
 };
 
@@ -115,14 +135,88 @@ function fakeEngine(): EngineClient {
   } as unknown as EngineClient;
 }
 
-async function makeApp(): Promise<FastifyInstance> {
+/** Structural Twitch client stub: no network, deterministic responses. */
+function fakeTwitchClient(): TwitchClient {
+  return {
+    buildAuthorizeUrl: vi
+      .fn()
+      .mockImplementation(
+        (state: string) =>
+          `https://id.twitch.tv/oauth2/authorize?client_id=test-client-id&state=${state}`,
+      ),
+    exchangeCode: vi.fn().mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresIn: 3600,
+      scope: 'user:read:email',
+    }),
+    refresh: vi.fn().mockResolvedValue({
+      accessToken: 'access-token-2',
+      refreshToken: 'refresh-token-2',
+      expiresIn: 3600,
+      scope: 'user:read:email',
+    }),
+    getUser: vi.fn().mockResolvedValue({ id: 'tw_12345', login: 'streamer' }),
+    getUserByLogin: vi.fn().mockResolvedValue('tw_broadcaster'),
+    listClips: vi.fn().mockResolvedValue([
+      {
+        id: 'ClipOne',
+        title: 'Sick play',
+        thumbnailUrl: 'https://clips.twitch.tv/thumb/ClipOne.jpg',
+        durationSeconds: 12.5,
+        creatorName: 'fan',
+        viewCount: 100,
+        createdAt: '2026-06-01T00:00:00Z',
+      },
+    ]),
+    getClipsByIds: vi.fn().mockImplementation((ids: readonly string[]) =>
+      Promise.resolve(
+        ids.map((id) => ({
+          id,
+          title: `Title ${id}`,
+          thumbnailUrl: `https://clips.twitch.tv/thumb/${id}.jpg`,
+          durationSeconds: 8,
+          creatorName: 'fan',
+          viewCount: 5,
+          createdAt: '2026-06-01T00:00:00Z',
+        })),
+      ),
+    ),
+  } as unknown as TwitchClient;
+}
+
+/** Clip downloader stub returning deterministic MP4 bytes, no shelling out. */
+function fakeClipDownloader(): ClipDownloader {
+  return {
+    downloadClip: vi.fn().mockImplementation((clipId: string) =>
+      Promise.resolve({
+        body: Buffer.from(`mp4-bytes-${clipId}`),
+        contentType: 'video/mp4',
+      }),
+    ),
+  };
+}
+
+interface MakeAppOverrides {
+  twitchClient?: TwitchClient | null;
+  clipDownloader?: ClipDownloader;
+}
+
+async function makeApp(overrides: MakeAppOverrides = {}): Promise<FastifyInstance> {
   const { db } = createFakeDatabase();
+  // `null` explicitly disables injection (a real/absent client); otherwise use
+  // the supplied stub or a default fake. Built conditionally so we never pass
+  // `undefined` under exactOptionalPropertyTypes.
+  const twitchClient =
+    overrides.twitchClient === null ? null : (overrides.twitchClient ?? fakeTwitchClient());
   const app = await buildApp({
     config,
     logger: createLogger('silent'),
     database: db,
     engine: fakeEngine(),
     storage: fakeStorage(),
+    ...(twitchClient !== null ? { twitchClient } : {}),
+    clipDownloader: overrides.clipDownloader ?? fakeClipDownloader(),
   });
   await app.ready();
   return app;
@@ -759,5 +853,160 @@ describe('OpenRelay API', () => {
       headers: auth,
     });
     expect(connection.statusCode).toBe(404);
+  });
+
+  it('returns 404 for the Twitch connection before connecting', async () => {
+    const { token } = await register(app, 'tw-none@example.com');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/twitch/connection',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('completes the Twitch OAuth connect + callback flow and exposes the account', async () => {
+    const { token } = await register(app, 'tw-connect@example.com');
+    const authHeader = { authorization: `Bearer ${token}` };
+
+    // Connect returns an authorize URL carrying a signed state token.
+    const connect = await app.inject({
+      method: 'GET',
+      url: '/api/twitch/connect',
+      headers: authHeader,
+    });
+    expect(connect.statusCode).toBe(200);
+    const { authorizeUrl } = connect.json<{ authorizeUrl: string }>();
+    const state = new URL(authorizeUrl).searchParams.get('state');
+    expect(state).not.toBeNull();
+
+    // The public callback links the account and redirects back to the web app.
+    const callback = await app.inject({
+      method: 'GET',
+      url: `/api/twitch/callback?code=auth-code&state=${encodeURIComponent(state ?? '')}`,
+    });
+    expect(callback.statusCode).toBe(302);
+    expect(callback.headers.location).toBe('http://localhost:3000/?twitch=connected');
+
+    // The connection is now visible (no tokens in the payload).
+    const conn = await app.inject({
+      method: 'GET',
+      url: '/api/twitch/connection',
+      headers: authHeader,
+    });
+    expect(conn.statusCode).toBe(200);
+    const body = conn.json<Record<string, unknown>>();
+    expect(body.twitchLogin).toBe('streamer');
+    expect(body.twitchUserId).toBe('tw_12345');
+    expect(JSON.stringify(body)).not.toContain('access-token');
+    expect(JSON.stringify(body)).not.toContain('refresh-token');
+
+    // Disconnect removes it.
+    const del = await app.inject({
+      method: 'DELETE',
+      url: '/api/twitch/connection',
+      headers: authHeader,
+    });
+    expect(del.statusCode).toBe(204);
+    const after = await app.inject({
+      method: 'GET',
+      url: '/api/twitch/connection',
+      headers: authHeader,
+    });
+    expect(after.statusCode).toBe(404);
+  });
+
+  it('rejects Twitch clip import without auth (401)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/streams/stream_anything/twitch/clips/import',
+      payload: { clipIds: ['ClipOne'] },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('lists and imports Twitch clips, creating source=twitch clip rows', async () => {
+    const { token } = await register(app, 'tw-import@example.com');
+    const authHeader = { authorization: `Bearer ${token}` };
+
+    // Connect the account first (import needs a token).
+    const connect = await app.inject({
+      method: 'GET',
+      url: '/api/twitch/connect',
+      headers: authHeader,
+    });
+    const state = new URL(connect.json<{ authorizeUrl: string }>().authorizeUrl).searchParams.get(
+      'state',
+    );
+    await app.inject({
+      method: 'GET',
+      url: `/api/twitch/callback?code=auth-code&state=${encodeURIComponent(state ?? '')}`,
+    });
+
+    const streamId = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/streams',
+        headers: authHeader,
+        payload: { title: 'Twitch Import Stream' },
+      })
+    ).json<{ id: string }>().id;
+
+    // List a channel's clips.
+    const list = await app.inject({
+      method: 'POST',
+      url: `/api/streams/${streamId}/twitch/clips/list`,
+      headers: authHeader,
+      payload: { channel: 'streamer', period: 'week', limit: 10 },
+    });
+    expect(list.statusCode).toBe(200);
+    const clipSummaries = list.json<{ id: string }[]>();
+    expect(clipSummaries[0]?.id).toBe('ClipOne');
+
+    // Import two clips.
+    const importRes = await app.inject({
+      method: 'POST',
+      url: `/api/streams/${streamId}/twitch/clips/import`,
+      headers: authHeader,
+      payload: { clipIds: ['ClipOne', 'ClipTwo'] },
+    });
+    expect(importRes.statusCode).toBe(201);
+    const imported =
+      importRes.json<{ id: string; source: string; sourceRef: string; label: string }[]>();
+    expect(imported).toHaveLength(2);
+    expect(imported.every((c) => c.source === 'twitch')).toBe(true);
+    expect(imported.map((c) => c.sourceRef)).toEqual(['ClipOne', 'ClipTwo']);
+    expect(imported[0]?.label).toBe('Title ClipOne');
+
+    // They appear on the hydrated stream detail as clips.
+    const hydrated = await app.inject({
+      method: 'GET',
+      url: `/api/streams/${streamId}`,
+      headers: authHeader,
+    });
+    const hydratedClips = hydrated.json<{ clips: { source: string }[] }>().clips;
+    expect(hydratedClips).toHaveLength(2);
+    expect(hydratedClips.every((c) => c.source === 'twitch')).toBe(true);
+  });
+
+  it('forbids a non-owner from importing Twitch clips (404 stream access)', async () => {
+    const owner = await register(app, 'tw-owner@example.com');
+    const streamId = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/streams',
+        headers: { authorization: `Bearer ${owner.token}` },
+        payload: { title: 'Owner Only' },
+      })
+    ).json<{ id: string }>().id;
+
+    const intruder = await register(app, 'tw-intruder@example.com');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/streams/${streamId}/twitch/clips/import`,
+      headers: { authorization: `Bearer ${intruder.token}` },
+      payload: { clipIds: ['ClipOne'] },
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

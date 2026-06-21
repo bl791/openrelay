@@ -1,11 +1,14 @@
 import { DEFAULT_FAILOVER_CONFIG, DEFAULT_OUTPUT_PROFILE, EngineStreamSpec } from '@openrelay/core';
 import type { ClipRow, DestinationRow, IngestRow, SceneRow, StreamRow } from '@openrelay/db';
 import { describe, expect, it } from 'vitest';
+import type { TwitchConnectionRow } from '@openrelay/db';
 import {
   buildEngineStreamSpec,
   REDACTED_STREAM_KEY,
+  toClip,
   toDestination,
   toIso,
+  toTwitchConnection,
   type StreamChildRows,
 } from './mappers.js';
 
@@ -69,6 +72,8 @@ const clipRow: ClipRow = {
   contentType: 'video/mp4',
   sizeBytes: 1024,
   durationSeconds: 12,
+  source: 'upload',
+  sourceRef: null,
   createdAt: now,
 };
 
@@ -114,6 +119,50 @@ describe('toDestination redaction', () => {
 
   it('includes the stream key only when explicitly requested', () => {
     expect(toDestination(destinationRow, true).streamKey).toBe('live_dest_key');
+  });
+});
+
+describe('toClip', () => {
+  it('maps an uploaded clip with source fields and a proxy URL', () => {
+    const clip = toClip(clipRow, 'http://api.example.com');
+    expect(clip.source).toBe('upload');
+    expect(clip.sourceRef).toBeNull();
+    expect(clip.url).toBe(`http://api.example.com/api/clips/${clipRow.id}/content`);
+  });
+
+  it('preserves the twitch source and clip id reference', () => {
+    const clip = toClip(
+      { ...clipRow, source: 'twitch', sourceRef: 'AwesomeClip123' },
+      'http://api.example.com',
+    );
+    expect(clip.source).toBe('twitch');
+    expect(clip.sourceRef).toBe('AwesomeClip123');
+  });
+});
+
+describe('toTwitchConnection', () => {
+  it('exposes the linked account without any tokens', () => {
+    const row: TwitchConnectionRow = {
+      id: 'twc_aaaaaaaa',
+      userId: 'user_aaaaaaaa',
+      twitchUserId: '12345',
+      twitchLogin: 'streamer',
+      accessTokenEnc: 'enc-access',
+      refreshTokenEnc: 'enc-refresh',
+      scope: 'user:read:email',
+      expiresAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const conn = toTwitchConnection(row);
+    expect(conn).toEqual({
+      twitchUserId: '12345',
+      twitchLogin: 'streamer',
+      scope: 'user:read:email',
+      connectedAt: now,
+    });
+    expect(JSON.stringify(conn)).not.toContain('enc-access');
+    expect(JSON.stringify(conn)).not.toContain('enc-refresh');
   });
 });
 

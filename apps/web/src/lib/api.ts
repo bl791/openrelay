@@ -11,8 +11,10 @@ import {
   type CreateStreamRequest,
   Destination,
   FriendConnection,
+  type ImportTwitchClipsRequest,
   Ingest,
   IngestConnectionInfo,
+  type ListTwitchClipsRequest,
   type LoginRequest,
   type QuickstartRequest,
   QuickstartResponse,
@@ -21,6 +23,9 @@ import {
   Stream,
   StreamRuntime,
   StreamWithChildren,
+  TwitchAuthUrlResponse,
+  TwitchClipSummary,
+  TwitchConnection,
   type UpdateDestinationRequest,
   type UpdateStreamRequest,
   User,
@@ -268,6 +273,41 @@ export const api = {
   },
   removeFriend(id: StreamId, userId: string): Promise<void> {
     return request(`/api/streams/${id}/friends/${userId}`, { method: 'DELETE', expectEmpty: true });
+  },
+
+  // ── Twitch integration ─────────────────────────────────────────────────────
+  getTwitchConnectUrl(): Promise<TwitchAuthUrlResponse> {
+    return request('/api/twitch/connect', { schema: TwitchAuthUrlResponse });
+  },
+  /** Resolve the linked Twitch account, or `null` when none is connected (404). */
+  async getTwitchConnection(): Promise<TwitchConnection | null> {
+    try {
+      return await request<TwitchConnection>('/api/twitch/connection', {
+        schema: TwitchConnection,
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+  disconnectTwitch(): Promise<void> {
+    return request('/api/twitch/connection', { method: 'DELETE', expectEmpty: true });
+  },
+  listTwitchClips(id: StreamId, input: ListTwitchClipsRequest): Promise<TwitchClipSummary[]> {
+    return request(`/api/streams/${id}/twitch/clips/list`, {
+      method: 'POST',
+      body: input,
+      schema: z.array(TwitchClipSummary),
+    });
+  },
+  importTwitchClips(id: StreamId, input: ImportTwitchClipsRequest): Promise<Clip[]> {
+    return request(`/api/streams/${id}/twitch/clips/import`, {
+      method: 'POST',
+      body: input,
+      schema: z.array(Clip),
+    });
   },
 };
 

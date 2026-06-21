@@ -24,6 +24,14 @@ const config: Config = {
     secretKey: 'minioadmin',
     mediaBaseUrl: 'http://localhost:9000/openrelay-media',
   },
+  twitch: {
+    isConfigured: false,
+    clientId: null,
+    clientSecret: null,
+    redirectUri: 'http://api.example.com/api/twitch/callback',
+    tokenEncryptionKey: 'test-secret-test-secret-test-secret-123',
+    webRedirect: 'http://localhost:3000',
+  },
 };
 
 describe('sanitizeFilename', () => {

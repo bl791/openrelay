@@ -108,6 +108,43 @@ export const CreateSharedIngestRequest = z.object({
 });
 export type CreateSharedIngestRequest = z.infer<typeof CreateSharedIngestRequest>;
 
+/** Begin the Twitch OAuth connect flow; returns the URL to redirect the user to. */
+export const TwitchAuthUrlResponse = z.object({
+  authorizeUrl: z.string().url(),
+});
+export type TwitchAuthUrlResponse = z.infer<typeof TwitchAuthUrlResponse>;
+
+/** A Twitch clip as listed via the Helix API, for the import picker. */
+export const TwitchClipSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  thumbnailUrl: z.string().url(),
+  durationSeconds: z.number().nonnegative(),
+  creatorName: z.string(),
+  viewCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+});
+export type TwitchClipSummary = z.infer<typeof TwitchClipSummary>;
+
+/** List a channel's clips (for the picker) before importing. */
+export const ListTwitchClipsRequest = z.object({
+  /** Twitch channel login (e.g. "shroud"). */
+  channel: z.string().min(1).max(40),
+  period: z.enum(['day', 'week', 'month', 'all']).default('week'),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+export type ListTwitchClipsRequest = z.infer<typeof ListTwitchClipsRequest>;
+
+/**
+ * Import one or more Twitch clips into a stream's library: the API downloads each
+ * clip's MP4 server-side, stores it, and creates clip rows with source `twitch`.
+ */
+export const ImportTwitchClipsRequest = z.object({
+  /** Twitch clip ids to import (from {@link TwitchClipSummary}). */
+  clipIds: z.array(z.string().min(1)).min(1).max(50),
+});
+export type ImportTwitchClipsRequest = z.infer<typeof ImportTwitchClipsRequest>;
+
 /** Register an uploaded media object as a clip in a stream's library. */
 export const CreateClipRequest = z.object({
   label: z.string().min(1).max(80),

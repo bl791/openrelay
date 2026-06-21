@@ -6,6 +6,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { type StreamId, type StreamWithChildren } from '@openrelay/core';
 import { useRef, useState, type SyntheticEvent } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Field, Input } from '@/components/ui/Input';
@@ -14,6 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ApiRequestError } from '@/lib/api';
 import { useDeleteClip, useUploadClip } from '@/lib/queries';
 import { palette } from '@/theme';
+import { TwitchClipsManager } from './TwitchClipsManager';
 
 /** Format a byte count for compact display. */
 function formatBytes(bytes: number): string {
@@ -82,16 +84,19 @@ export function ClipsManager({
         description="Clips & BRB media the engine loops during failover or clips scenes."
         action={
           canControl ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                setError(null);
-                setOpen(true);
-              }}
-            >
-              Upload clip
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <TwitchClipsManager streamId={streamId} canControl={canControl} />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setError(null);
+                  setOpen(true);
+                }}
+              >
+                Upload clip
+              </Button>
+            </Stack>
           ) : null
         }
       />
@@ -119,23 +124,26 @@ export function ClipsManager({
                 }}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Link
-                    href={clip.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    sx={{
-                      display: 'block',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontSize: '0.875rem',
-                      color: 'text.primary',
-                      textDecoration: 'none',
-                      '&:hover': { color: 'primary.light' },
-                    }}
-                  >
-                    {clip.label}
-                  </Link>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                    <Link
+                      href={clip.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{
+                        display: 'block',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: '0.875rem',
+                        color: 'text.primary',
+                        textDecoration: 'none',
+                        '&:hover': { color: 'primary.light' },
+                      }}
+                    >
+                      {clip.label}
+                    </Link>
+                    {clip.source === 'twitch' ? <Badge tone="info">Twitch</Badge> : null}
+                  </Box>
                   <Typography
                     sx={{
                       fontSize: '0.625rem',
