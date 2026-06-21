@@ -1,0 +1,52 @@
+# MediaMTX configuration for the OpenRelay ingest sidecar.
+#
+# MediaMTX is the real RTMP/SRT server streamers push their source feed into. It
+# delegates publish authorization to the engine and notifies the engine when a
+# source becomes ready / not-ready, which drives the failover state machine.
+#
+# Docs: https://github.com/bluenviron/mediamtx
+
+logLevel: info
+logDestinations: [stdout]
+
+# ─── Ingest protocols ────────────────────────────────────────────────────────
+rtmp: yes
+rtmpAddress: :1935
+
+srt: yes
+srtAddress: :8890
+
+# We do not need MediaMTX's own HLS/WebRTC/RTSP servers for pure ingest.
+hls: no
+webrtc: no
+rtsp: no
+
+# ─── Authentication ──────────────────────────────────────────────────────────
+# Delegate every action to the engine's HTTP auth hook. The engine admits a
+# publish only when the path matches a live ingest's stream key, and always
+# allows reads (the engine itself pulls the source back out to encode it).
+authMethod: http
+authHTTPAddress: http://engine:8090/mediamtx/auth
+# Static header carrying the shared engine token (substituted from the
+# ENGINE_TOKEN env var at container start via the entrypoint).
+authHTTPExclude: []
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+# A single catch-all path. The path name is the streamer's stream key; the engine
+# resolves it to an ingest. runOnReady / runOnNotReady fire the engine hooks that
+# mark the ingest live / offline.
+pathDefaults:
+  runOnReady: >
+    sh -c 'wget -q -O- --header="Authorization: Bearer $ENGINE_TOKEN"
+    --header="Content-Type: application/json"
+    --post-data="{\"path\":\"$MTX_PATH\"}"
+    http://engine:8090/mediamtx/ready'
+  runOnReadyRestart: no
+  runOnNotReady: >
+    sh -c 'wget -q -O- --header="Authorization: Bearer $ENGINE_TOKEN"
+    --header="Content-Type: application/json"
+    --post-data="{\"path\":\"$MTX_PATH\"}"
+    http://engine:8090/mediamtx/notready'
+
+paths:
+  all_others:

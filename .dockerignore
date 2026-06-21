@@ -1,0 +1,45 @@
+# Keep the Docker build context small and free of host-only / sensitive files.
+# Dockerfiles install deps and build from source inside the image, so none of the
+# following should ever be copied in.
+
+# Dependencies (reinstalled in-image from the lockfile)
+**/node_modules
+.pnpm-store
+
+# Build output / caches
+**/dist
+**/.next
+**/out
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+# Version control & CI
+.git
+.github
+.gitignore
+.dockerignore
+
+# Local env & secrets (compose injects real env at runtime)
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode
+.idea
+**/.DS_Store
+
+# Logs & local runtime data
+**/*.log
+/data
+/media
+
+# Docs & meta not needed at build time
+*.md
+**/*.md
+LICENSE
+
+# Local compose overrides
+docker-compose.override.yml
+docker-compose.*.yml

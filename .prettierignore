@@ -1,0 +1,9 @@
+**/dist
+**/.next
+**/coverage
+**/node_modules
+**/.turbo
+pnpm-lock.yaml
+**/CHANGELOG.md
+**/.next/types
+**/drizzle/**

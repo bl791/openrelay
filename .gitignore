@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Framework generated
+next-env.d.ts
+
+# Turbo
+.turbo/
+
+# Test / coverage
+coverage/
+*.lcov
+
+# Env (all real env files ignored; only the example is tracked)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Runtime / media artifacts
+/data/
+/media/
+*.ts.tmp
+
+# Local docker-compose overrides (committed compose stays canonical)
+docker-compose.override.yml
+
+# Misc
+*.tgz
+.eslintcache

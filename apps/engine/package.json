@@ -1,0 +1,36 @@
+{
+  "name": "@openrelay/engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FFmpeg-based relay engine for OpenRelay: multistream fan-out with stream drop protection.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "openrelay-engine": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rimraf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@fastify/sensible": "^6.0.2",
+    "@openrelay/core": "workspace:*",
+    "fastify": "^5.2.1",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@openrelay/config": "workspace:*",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.18.0",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
